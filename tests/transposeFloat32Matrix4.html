@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+textarea {
+  width: 640px;
+}
+</style>
+<script id="js_code">
+function transposeFloat32Matrix4Scalar(src, res) {
+  for (var i = 0, il = src.length; i < il; i+=16) {
+    res[i+0]  = src[i+0];
+    res[i+1]  = src[i+4];
+    res[i+2]  = src[i+8];
+    res[i+3]  = src[i+12];
+    res[i+4]  = src[i+1];
+    res[i+5]  = src[i+5];
+    res[i+6]  = src[i+9];
+    res[i+7]  = src[i+13];
+    res[i+8]  = src[i+2];
+    res[i+9]  = src[i+6];
+    res[i+10] = src[i+10];
+    res[i+11] = src[i+14];
+    res[i+12] = src[i+3];
+    res[i+13] = src[i+7];
+    res[i+14] = src[i+11];
+    res[i+15] = src[i+15];
+  }
+}
+</script>
+<script id="simd_code">
+function transposeFloat32Matrix4SIMD(src, res) {
+  for (var i = 0, il = src.length; i < il; i+=16) {
+    var a0 = SIMD.Float32x4.load(src, i+0);
+    var a1 = SIMD.Float32x4.load(src, i+4);
+    var a2 = SIMD.Float32x4.load(src, i+8);
+    var a3 = SIMD.Float32x4.load(src, i+12);
+
+    var tmp01 = SIMD.Float32x4.shuffle(a0, a1, 0, 1, 4, 5);
+    var tmp23 = SIMD.Float32x4.shuffle(a2, a3, 0, 1, 4, 5);
+    var out0  = SIMD.Float32x4.shuffle(tmp01, tmp23, 0, 2, 4, 6);
+    var out1  = SIMD.Float32x4.shuffle(tmp01, tmp23, 1, 3, 5, 7);
+    SIMD.Float32x4.store(res, i+0, out0);
+    SIMD.Float32x4.store(res, i+4, out1);
+
+    tmp01 = SIMD.Float32x4.shuffle(a0, a1, 2, 3, 6, 7);
+    tmp23 = SIMD.Float32x4.shuffle(a2, a3, 2, 3, 6, 7);
+    var out2  = SIMD.Float32x4.shuffle(tmp01, tmp23, 0, 2, 4, 6);
+    var out3  = SIMD.Float32x4.shuffle(tmp01, tmp23, 1, 3, 5, 7);
+    SIMD.Float32x4.store(res, i+8, out2);
+    SIMD.Float32x4.store(res, i+12, out3);
+  }
+}
+</script>
+<script id="test_code">
+function start() {
+  document.getElementById('run_button').disabled = true;
+  document.getElementById('message').innerText = 'Initializing';
+  setTimeout(start_);
+}
+
+function start_() {
+  var num = parseInt(document.getElementById('num_select').value);
+  var loop = 10;
+
+  var src = new Float32Array(num);
+  var res1 = new Float32Array(num);
+  var res2 = new Float32Array(num);
+
+  function initSrc(array) {
+    for (var i = 0, il = array.length; i < il; i++) {
+      array[i] = Math.random() * 20.0 - 10.0;
+    }
+  }
+
+  initSrc(src);
+
+  var jsPerformance = document.getElementById('js_performance');
+  var simdPerformance = document.getElementById('simd_performance');
+  var comparison = document.getElementById('comparison');
+
+  jsPerformance.innerText = '';
+  simdPerformance.innerText = '';
+  comparison.innerText = '';
+
+  function checkFunctionality() {
+    runJS();
+    runSIMD();
+    for (var i = 0, il = res1.length; i < il; i++) {
+      if (res1[i] !== res2[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function runSIMD() {
+    return transposeFloat32Matrix4SIMD(src, res2);
+  }
+
+  function runJS() {
+    return transposeFloat32Matrix4Scalar(src, res1);
+  }
+
+  function run(func, loop) {
+    var elapsedTime = 0.0;
+    for (var i = 0; i < loop + 1; i++) {
+      var startTime = performance.now();
+      func();
+      var endTime = performance.now();
+      if (i > 0) elapsedTime += endTime - startTime;
+    }
+    return (elapsedTime / loop).toFixed(4);
+  }
+
+  // don't use Promise for the non Promise support browsers so far.
+  setTimeout(function () {
+    if(! checkFunctionality()) {
+      document.getElementById('message').innerText =
+        'Two functions seem not equeal';
+      document.getElementById('run_button').disabled = false;
+      return;
+    }
+    setTimeout(function () {
+      jsPerformance.innerText = run(runJS, loop);
+      setTimeout(function() {
+        simdPerformance.innerText = run(runSIMD, loop);
+        comparison.innerText =
+          (Number(jsPerformance.innerText)
+            / Number(simdPerformance.innerText)).toFixed(4);
+        document.getElementById('message').innerText = 'Done';
+        document.getElementById('run_button').disabled = false;
+      });
+      document.getElementById('message').innerText = 'Running SIMD';
+    });
+    document.getElementById('message').innerText = 'Running JavaScript';
+  });
+
+  document.getElementById('message').innerText = 'Checking equality';
+}
+</script>
+<script>
+function onReady() {
+  if (typeof SIMD === 'undefined') {
+    document.getElementById('message').innerText = 'This browser does not seem to support SIMD.js';
+    return;
+  }
+
+  document.getElementById('run_button').disabled = false;
+  document.getElementById('message').innerText = 'Ready';
+}
+
+function init() {
+  putCode('test_code_area', document.getElementById('test_code').text.trim());
+  putCode('js_code_area', document.getElementById('js_code').text.trim());
+  putCode('simd_code_area', document.getElementById('simd_code').text.trim());
+
+  onReady();
+}
+
+function putCode(textareaId, code) {
+  var textarea = document.getElementById(textareaId);
+  textarea.value = code;
+  textarea.setAttribute('rows', code.split('\n').length);
+}
+
+function switchDisplay(div) {
+  var textarea = div.getElementsByTagName('textarea')[0];
+  var p = div.getElementsByTagName('p')[0];
+  p.textContent = p.textContent.slice(2);
+  if (textarea.style.display === 'none') {
+    textarea.style.display = '';
+    p.textContent = '- ' + p.textContent;
+  } else {
+    textarea.style.display = 'none';
+    p.textContent = '+ ' + p.textContent;
+  }
+}
+</script>
+</head>
+<body onload="init()">
+  <div>
+    <p>
+      num
+      <select id="num_select">
+        <option>0x10</option>
+        <option>0x100</option>
+        <option>0x1000</option>
+        <option>0x10000</option>
+        <option selected>0x100000</option>
+        <option>0x1000000</option>
+      </select>
+      <button id="run_button" onclick="start()" disabled>run</button>
+      <span id="message"></span>
+    </p>
+    <p>
+      Result (average [ms])<br />
+      JavaScript: <span id="js_performance"></span><br />
+      SIMD: <span id="simd_performance"></span><br />
+      JavaScript/SIMD: <span id="comparison"></span><br />
+    </p>
+  </div>
+  <div>
+    <p onclick="switchDisplay(this.parentNode)">+ Test code</p>
+    <p><textarea id="test_code_area" readonly style="display:none"></textarea></p>
+  </div>
+  <div>
+    <p onclick="switchDisplay(this.parentNode)">- JavaScript code</p>
+    <p><textarea id="js_code_area" readonly></textarea></p>
+  </div>
+  <div>
+    <p onclick="switchDisplay(this.parentNode)">- SIMD code</p>
+    <p><textarea id="simd_code_area" readonly></textarea></p>
+  </div>
+</body>
+</html>
